@@ -10,5 +10,9 @@ urlpatterns = [
     path('<int:pk>/', views.ObservationDetailView.as_view(), name='detail'),
     path('<int:pk>/rectify/', views.RectificationUpdateView.as_view(), name='rectify'),
     path('<int:pk>/verify/', views.VerificationView.as_view(), name='verify'),
+
+    # Export URLs
+    path('export/csv/', views.export_observations_csv, name='export_observations_csv'),
+    path('export/excel/', views.export_observations_excel, name='export_observations_excel'),
 ]
 

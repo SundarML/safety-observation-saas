@@ -135,3 +135,78 @@ class VerificationView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
     #         self.observation.save()
     #     return redirect('observations:detail', pk=self.observation.pk)
 
+# observations/views.py
+
+from openpyxl import Workbook
+
+def export_observations_excel(request):
+    """Download all observations as Excel file"""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Observations"
+
+    headers = [
+        "ID",
+        "Title",
+        "Description",
+        "Location",
+        "Status",
+        "Observer",
+        "Created At",
+    ]
+    ws.append(headers)
+
+    for obs in Observation.objects.all().select_related("observer"):
+        ws.append([
+            obs.id,
+            obs.title,
+            obs.description,
+            str(obs.location),
+            obs.status,
+            obs.observer.username if obs.observer else "",
+            obs.date_observed.strftime("%Y-%m-%d %H:%M"),
+        ])
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="observations.xlsx"'
+
+    wb.save(response)
+    return response
+
+    # observations/views.py
+
+import csv
+from django.http import HttpResponse
+from .models import Observation
+
+def export_observations_csv(request):
+    """Download all observations as CSV"""
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="observations.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "ID",
+        "Title",
+        "Description",
+        "Location",
+        "Status",
+        "Observer",
+        "Created At",
+    ])
+
+    for obs in Observation.objects.all().select_related("observer"):
+        writer.writerow([
+            obs.id,
+            obs.title,
+            obs.description,
+            obs.location,
+            obs.status,
+            obs.observer.username if obs.observer else "",
+            obs.date_observed.strftime("%Y-%m-%d %H:%M"),
+        ])
+
+    return response
+

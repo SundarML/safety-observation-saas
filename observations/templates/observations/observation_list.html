@@ -13,6 +13,16 @@
     </div>
   </form>
 
+  <div class="mb-3">
+    <a href="{% url 'observations:export_observations_csv' %}" class="btn btn-sm btn-success">
+        Download CSV
+    </a>
+
+    <a href="{% url 'observations:export_observations_excel' %}" class="btn btn-sm btn-primary">
+        Download Excel
+    </a>
+  </div>
+
   <div class="list-group">
     {% for obs in observations %}
       <a href="{% url 'observations:detail' obs.pk %}" class="list-group-item list-group-item-action">
