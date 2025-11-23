@@ -5,7 +5,7 @@ from . import views
 app_name = 'observations'
 
 urlpatterns = [
-    path('', views.ObservationListView.as_view(), name='observation_list'),
+    path('', views.observation_list, name='observation_list'),
     path('new/', views.ObservationCreateView.as_view(), name='create'),
     path('<int:pk>/', views.ObservationDetailView.as_view(), name='detail'),
     path('<int:pk>/rectify/', views.RectificationUpdateView.as_view(), name='rectify'),

@@ -10,6 +10,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from .models import Observation
 from .forms import ObservationCreateForm, RectificationForm, VerificationForm
 from django.contrib import messages
+from django.core.paginator import Paginator
+from django.db.models import Q
 
 # Helper mixins
 class ObserverRequiredMixin(UserPassesTestMixin):
@@ -35,17 +37,47 @@ class ObservationCreateView(LoginRequiredMixin,  CreateView):
         form.instance.status = 'OPEN'
         return super().form_valid(form)
 
-class ObservationListView(LoginRequiredMixin, ListView):
-    model = Observation
-    template_name = 'observations/observation_list.html'
-    context_object_name = 'observations'
+# Uncomment below to use class-based list view
+# class ObservationListView(LoginRequiredMixin, ListView):
+#     model = Observation
+#     template_name = 'observations/observation_list.html'
+#     context_object_name = 'observations'
 
-    def get_queryset(self):
-        qs = super().get_queryset().select_related('location','assigned_to')
-        q = self.request.GET.get('q')
-        if q:
-            qs = qs.filter(title__icontains=q)
-        return qs.order_by('-date_observed')
+#     def get_queryset(self):
+#         qs = super().get_queryset().select_related('location','assigned_to')
+#         q = self.request.GET.get('q')
+#         if q:
+#             qs = qs.filter(title__icontains=q)
+#         return qs.order_by('-date_observed')
+
+#observations list view function 
+def observation_list(request):
+    #----1. handle search query-----
+    q = request.GET.get('q', '').strip()
+    observations = Observation.objects.select_related('location','assigned_to').order_by('-date_observed')
+
+    if q:
+        observations = observations.filter(
+            Q(title__icontains=q) | 
+            Q(description__icontains=q) |
+            Q(location__name__icontains=q) |
+            Q(observer__username__icontains=q)
+        )
+    #----2. handle pagination-----
+    paginator = Paginator(observations, 10)  # Show 10 observations per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    context = {
+        'observations': page_obj,
+        'page_obj': page_obj,
+        'q': q, # to retain search query in template
+    }
+    
+    return render(request, 'observations/observation_list.html', context)
+    # return render(request, 'observations/observation_list.html', {'observations': observations})    
+
+
+
 
 class ObservationDetailView(LoginRequiredMixin, DetailView):
     model = Observation
