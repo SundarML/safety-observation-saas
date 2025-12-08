@@ -19,7 +19,7 @@ class ObservationCreateForm(forms.ModelForm):
 class RectificationForm(forms.ModelForm):
     class Meta:
         model = Observation
-        fields = ['rectification_details','photo_after','target_date']
+        fields = ['description','photo_before','rectification_details','photo_after','target_date', 'location']
 
 class VerificationForm(forms.ModelForm):
     APPROVAL_CHOICES = [

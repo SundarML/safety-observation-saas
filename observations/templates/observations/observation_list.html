@@ -35,20 +35,23 @@
             <th>Location</th>
             <th>Created By</th>
             <th>Status</th>
-            <th>Created</th>
+            <th>Created On</th>
+            <th>Target Date</th>
             <th>Action</th>
+            
         </tr>
     </thead>
 
     <tbody>
         {% for obs in observations %}
-            <tr>
+            <tr class="{% if obs.target_date and obs.target_date < today %}table-danger fw-bold{% endif %}">
                 <td>{{ obs.id }}</td>
                 <td>{{ obs.title }}</td>
                 <td>{{ obs.location.name }}</td>
                 <td>{{ obs.observer.username }}</td>
                 <td>{{ obs.status }}</td>
                 <td>{{ obs.date_observed|date:"Y-m-d H:i" }}</td>
+                <td>{{ obs.target_date}}</td>
                 <td>
                     <a href="{% url 'observations:detail' obs.id %}" class="btn btn-sm btn-info">
                         View

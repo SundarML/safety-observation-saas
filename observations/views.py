@@ -18,6 +18,8 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.middleware.csrf import get_token
+from datetime import date
+from django.utils import timezone
 
 # Helper mixins
 class ObserverRequiredMixin(UserPassesTestMixin):
@@ -77,6 +79,7 @@ def observation_list(request):
         'observations': page_obj,
         'page_obj': page_obj,
         'q': q, # to retain search query in template
+        'today': date.today(), # to compare target_date in template
     }
     
     return render(request, 'observations/observation_list.html', context)
