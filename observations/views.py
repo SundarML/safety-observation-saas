@@ -20,6 +20,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.middleware.csrf import get_token
 from datetime import date
 from django.utils import timezone
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.core.exceptions import PermissionDenied
 
 # Helper mixins
 class ObserverRequiredMixin(UserPassesTestMixin):
@@ -62,7 +64,7 @@ class ObservationCreateView(LoginRequiredMixin,  CreateView):
 def observation_list(request):
     #----1. handle search query-----
     q = request.GET.get('q', '').strip()
-    observations = Observation.objects.select_related('location','assigned_to').order_by('-date_observed')
+    observations = Observation.objects.filter(is_archived=False).select_related('location','assigned_to').order_by('-date_observed')
 
     if q:
         observations = observations.filter(
@@ -176,7 +178,54 @@ class VerificationView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
     #         self.observation.save()
     #     return redirect('observations:detail', pk=self.observation.pk)
 
-# observations/views.py
+# Delete observation view
+def delete_observation(request, pk):
+    # restrict to Managers and Superusers
+    if not (request.user.is_manager or request.user.is_superuser):
+        raise PermissionDenied("You do not have permission to delete observations.")
+
+    obs = get_object_or_404(Observation, pk=pk)
+    obs.delete()
+    messages.success(request, "Observation deleted successfully.")
+    return redirect("observations:observation_list")
+
+# View to list archived observations
+def archived_observations_list(request):
+    """List all archived (closed) observations"""
+    archived = Observation.objects.filter(is_archived=True).order_by('-id')
+
+    # Handle pagination
+    paginator = Paginator(archived, 10)  # Show 10 observations per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    context = {
+        'observations': page_obj,
+        'page_obj': page_obj,
+        'today': timezone.now().date(), # to compare target_date in template
+        'is_archive_page': True,
+    }
+    
+    return render(request, 'observations/archived_list.html', context)
+
+def is_safety_manager(user):
+    return user.groups.filter(name='Managers').exists() or user.is_superuser
+
+@login_required
+@user_passes_test(is_safety_manager)
+def archive_observation(request, pk):
+    obs = get_object_or_404(Observation, pk=pk)
+    obs.is_archived = True
+    obs.save()
+    return redirect("observations:observation_list")
+    # return redirect("observations:archived_list")
+
+
+def restore_observation(request, pk):
+    obs = get_object_or_404(Observation, pk=pk)
+    obs.is_archived = False
+    obs.save()
+    return redirect("observations:archived_list")
+    # return redirect("observations:observation_list")
 
 from openpyxl import Workbook
 

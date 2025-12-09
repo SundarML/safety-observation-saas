@@ -44,7 +44,7 @@
 
     <tbody>
         {% for obs in observations %}
-            <tr class="{% if obs.target_date and obs.target_date < today %}table-danger fw-bold{% endif %}">
+            <tr class="{% if obs.target_date < today %}table-danger fw-bold{% endif %}">
                 <td>{{ obs.id }}</td>
                 <td>{{ obs.title }}</td>
                 <td>{{ obs.location.name }}</td>
@@ -53,8 +53,22 @@
                 <td>{{ obs.date_observed|date:"Y-m-d H:i" }}</td>
                 <td>{{ obs.target_date}}</td>
                 <td>
-                    <a href="{% url 'observations:detail' obs.id %}" class="btn btn-sm btn-info">
-                        View
+                    <a href="{% url 'observations:detail' obs.id %}" class="btn btn-sm btn-info" title="View">
+                        <i class="bi bi-eye-fill"></i> 
+                    </a>
+                    {% if request.user.is_manager or request.user.is_superuser %}
+                      <a href="{% url 'observations:archive' obs.id %}"
+                        class="btn btn-sm btn-warning"
+                        title="Archive"
+                        onclick="return confirm('Archive this observation?');">
+                          <i class="bi bi-archive"></i>
+
+                      <a href="{% url 'observations:delete' obs.id %}"
+                        class="btn btn-sm btn-danger"
+                        title="Delete observation?"
+                        onclick="return confirm('Are you sure you want to delete this observation? This action cannot be undone.');">
+                          <i class="bi bi-trash-fill"></i>
+                    {% endif %}
                     </a>
                 </td>
             </tr>
