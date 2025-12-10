@@ -24,5 +24,9 @@ urlpatterns = [
     # delete observation
     path('<int:pk>/delete/', views.delete_observation, name='delete'),
 
+    # Dashboard URL
+    path('dashboard/', views.observations_dashboard, name='dashboard'),
+
+
 ]
 

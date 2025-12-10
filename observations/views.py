@@ -316,3 +316,126 @@ def ajax_add_location(request):
             "success": False,
             "errors": form.errors,
         })
+
+# Dashboard view
+# @login_required
+import pandas as pd
+import plotly.express as px
+from plotly.io import to_image
+from django.http import HttpResponse
+from django.db.models import Count, Q
+from django.shortcuts import render
+from .models import Observation, Location
+from datetime import datetime
+
+
+def observations_dashboard(request):
+
+    # =========================================================================
+    # 1. Read Filter Values
+    # =========================================================================
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+    location_id = request.GET.get("location")
+
+    qs = Observation.objects.filter(is_archived=False)
+
+    if start_date:
+        qs = qs.filter(date_observed__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(date_observed__date__lte=end_date)
+    if location_id and location_id != "all":
+        qs = qs.filter(location_id=location_id)
+
+    # =========================================================================
+    # 2. KPI Cards
+    # =========================================================================
+    total_obs = qs.count()
+    open_obs = qs.filter(status="OPEN").count()
+    closed_obs = qs.filter(status="CLOSED").count()
+    overdue_obs = qs.filter(target_date__lt=datetime.today().date()).exclude(status="CLOSED" ).count()
+
+    # =========================================================================
+    # 3. Aggregated Data
+    # =========================================================================
+    severity_df = pd.DataFrame(list(qs.values("severity").annotate(total=Count("id"))))
+    status_df = pd.DataFrame(list(qs.values("status").annotate(total=Count("id"))))
+
+    monthly_df = (
+        qs.extra(select={"month": "strftime('%%Y-%%m', date_observed)"})
+        .values("month")
+        .annotate(total=Count("id"))
+        .order_by("month")
+    )
+    monthly_df = pd.DataFrame(list(monthly_df))
+
+    # =========================================================================
+    # 4. Drill-down: If user clicks severity bar → show table
+    # =========================================================================
+    drill_severity = request.GET.get("drill_severity")
+    drill_data = None
+    if drill_severity:
+        drill_data = qs.filter(severity=drill_severity)
+
+    # =========================================================================
+    # 5. Plotly Charts
+    # =========================================================================
+
+    # Severity Chart
+    fig_severity = px.bar(severity_df, x="severity", y="total",
+                          title="Observations by Severity")
+    severity_plot = fig_severity.to_html(full_html=False)
+
+    # Status Pie Chart
+    fig_status = px.pie(status_df, names="status", values="total",
+                        title="Status Distribution")
+    status_plot = fig_status.to_html(full_html=False)
+
+    # Monthly Trends
+    fig_monthly = px.line(monthly_df, x="month", y="total",
+                          markers=True, title="Monthly Trend")
+    monthly_plot = fig_monthly.to_html(full_html=False)
+
+    # =========================================================================
+    # 6. Export PNG Feature
+    # =========================================================================
+    if request.GET.get("export_png"):
+        fig_name = request.GET.get("export_png")
+        fig_map = {
+            "severity": fig_severity,
+            "status": fig_status,
+            "monthly": fig_monthly,
+        }
+        fig = fig_map.get(fig_name)
+        if fig:
+            png_bytes = to_image(fig, format="png")
+            response = HttpResponse(png_bytes, content_type="image/png")
+            response["Content-Disposition"] = f'attachment; filename="{fig_name}.png"'
+            return response
+
+    # =========================================================================
+    # 7. Send to Template
+    # =========================================================================
+    return render(request, "observations/dashboard.html", {
+        "severity_plot": severity_plot,
+        "status_plot": status_plot,
+        "monthly_plot": monthly_plot,
+
+        # KPI cards
+        "total_obs": total_obs,
+        "open_obs": open_obs,
+        "closed_obs": closed_obs,
+        "overdue_obs": overdue_obs,
+
+        # filters
+        "start_date": start_date,
+        "end_date": end_date,
+        "location_id": location_id,
+        "locations": Location.objects.all(),
+
+        # drill-down
+        "drill_severity": drill_severity,
+        "drill_data": drill_data,
+    })
+
+
