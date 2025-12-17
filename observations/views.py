@@ -179,15 +179,26 @@ class VerificationView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
     #     return redirect('observations:detail', pk=self.observation.pk)
 
 # Delete observation view
-def delete_observation(request, pk):
-    # restrict to Managers and Superusers
-    if not (request.user.is_manager or request.user.is_superuser):
-        raise PermissionDenied("You do not have permission to delete observations.")
 
+def is_superuser(user):
+    return user.is_superuser
+@login_required
+@user_passes_test(is_superuser)
+
+def delete_observation(request, pk):
     obs = get_object_or_404(Observation, pk=pk)
-    obs.delete()
-    messages.success(request, "Observation deleted successfully.")
-    return redirect("observations:observation_list")
+    # restrict to Managers and Superusers
+    # if not (request.user.is_superuser):
+    #     raise PermissionDenied("You do not have permission to delete observations.")
+
+    if request.method == 'POST':
+        obs.delete()
+        messages.success(request, "Observation deleted successfully.")
+        return redirect("observations:observation_list")
+    # obs.delete()
+    # messages.success(request, "Observation deleted successfully.")
+    
+    return render(request, "observations/confirm_delete.html", {"observation":obs})
 
 # View to list archived observations
 def archived_observations_list(request):
