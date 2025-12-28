@@ -75,6 +75,16 @@
               </li>
             {% endif %}
             {% if user.is_authenticated %}
+
+              {% if user.is_authenticated and user.is_superuser %}
+              <li class="nav-item">
+                  <a class="nav-link text-danger fw-bold"
+                     href="{% url 'admin:index' %}">
+                      <i class="bi bi-shield-lock-fill"></i> Admin Login
+                  </a>
+              </li>
+              {% endif %}
+
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userMenu"
                   role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -118,6 +128,7 @@
     color: #0d6efd !important;
     transition: color 0.2s ease;
   }
+  .card h2 {letter-spacing: 1px;}
 </style>
 
 
