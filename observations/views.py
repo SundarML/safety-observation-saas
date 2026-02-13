@@ -11,7 +11,7 @@ from .models import Observation
 from .forms import ObservationCreateForm, RectificationForm, VerificationForm
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models import Q, Count
+from django.db.models import Q, Count, F
 from django.db.models.functions import TruncMonth, TruncDay, TruncWeek 
 from .models import Location
 from .forms import LocationForm
@@ -23,8 +23,15 @@ from datetime import date
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
-
+from core.mixins import OrganizationQuerySetMixin
+import pandas as pd
 # Helper mixins
+class OrganizationRequiredMixin:
+    def dispatch(self, request, *args, **kwargs):
+        if not request.organization:
+            raise PermissionDenied("No organization associated with the user.")
+        return super().dispatch(request, *args, **kwargs)
+    
 class ObserverRequiredMixin(UserPassesTestMixin):
     def test_func(self):
         return self.request.user.is_authenticated and self.request.user.is_observer
@@ -36,37 +43,66 @@ class IsAssignedOrManagerMixin(UserPassesTestMixin):
         return user.is_safety_manager or (obj.assigned_to and obj.assigned_to == user)
 
 # Views
-class ObservationCreateView(LoginRequiredMixin,  CreateView):
-    #ObserverRequiredMixin,
+
+class ObservationCreateView(
+    LoginRequiredMixin,
+    OrganizationRequiredMixin,
+    CreateView
+):
     model = Observation
     form_class = ObservationCreateForm
-    template_name = 'observations/observation_form.html'
-    success_url = reverse_lazy('observations:observation_list')
+    template_name = "observations/observation_form.html"
+    success_url = reverse_lazy("observations:observation_list")
+
+    def dispatch(self, request, *args, **kwargs):
+        # print("User:", request.user)
+        # print("Organization:", getattr(request, 'organization', None))
+        org = getattr(request, 'organization', None)
+        if not org:
+            # raise PermissionDenied("No organization associated with the user.")
+            messages.error(request, "No organization associated with your account. Please create or join an organization to proceed.")
+            return redirect("core:organization_signup")
+        # sub = request.organization.subscription
+        sub = getattr(org, 'subscription', None)
+        if not sub:
+            messages.error(request, "Your organization does not have an active subscription. Please contact your administrator.")
+            return redirect("core:organization_signup")
+
+        count = Observation.objects.filter(
+            organization=org
+        ).count()
+
+        if count >= sub.plan.max_observations:
+            messages.error(
+                request,
+                "Observation limit reached for your current plan. Please upgrade."
+            )
+            return redirect("observations:observation_list")
+
+        return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
+        form.instance.organization = self.request.organization
         form.instance.observer = self.request.user
-        form.instance.status = 'OPEN'
+        form.instance.status = "OPEN"
         return super().form_valid(form)
 
-# Uncomment below to use class-based list view
-# class ObservationListView(LoginRequiredMixin, ListView):
-#     model = Observation
-#     template_name = 'observations/observation_list.html'
-#     context_object_name = 'observations'
 
-#     def get_queryset(self):
-#         qs = super().get_queryset().select_related('location','assigned_to')
-#         q = self.request.GET.get('q')
-#         if q:
-#             qs = qs.filter(title__icontains=q)
-#         return qs.order_by('-date_observed')
+def home_view(request):
+    """Lightweight marketing-style homepage"""
+    return render(request, "home.html", {})
 
-#observations list view function 
+
 @login_required
 def observation_list(request):
+    if not request.organization:
+        raise PermissionDenied("No organization associated with the user.")
     #----1. handle search query-----
     q = request.GET.get('q', '').strip()
-    observations = Observation.objects.filter(is_archived=False).select_related('location','assigned_to').order_by('-date_observed')
+    observations = Observation.objects.filter(
+        is_archived=False,
+        organization=request.organization
+    ).select_related('location','assigned_to').order_by('-date_observed')
 
     if q:
         observations = observations.filter(
@@ -92,11 +128,11 @@ def observation_list(request):
 
 
 
-class ObservationDetailView(LoginRequiredMixin, DetailView):
+class ObservationDetailView(LoginRequiredMixin, OrganizationQuerySetMixin, DetailView):
     model = Observation
     template_name = 'observations/observation_detail.html'
 
-class RectificationUpdateView(LoginRequiredMixin, IsAssignedOrManagerMixin, UpdateView):
+class RectificationUpdateView(LoginRequiredMixin, IsAssignedOrManagerMixin, OrganizationQuerySetMixin, UpdateView):
     model = Observation
     form_class = RectificationForm
     template_name = 'observations/observation_form.html'
@@ -127,16 +163,8 @@ class RectificationUpdateView(LoginRequiredMixin, IsAssignedOrManagerMixin, Upda
         observation = self.get_object()
         return self.request.user == observation.assigned_to
 
-    # def form_valid(self, form):
-    #     observation = form.save(commit=False)
-    #     observation.status = 'AWAITING VERIFICATION'
-    #     observation.save()
-    #     messages.success(self.request, "Rectification details submitted successfully, pending for verification!.")
-    #     return super().form_valid(form)
-
-
-
-class VerificationView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
+   
+class VerificationView(LoginRequiredMixin, UserPassesTestMixin, OrganizationQuerySetMixin, UpdateView):
     model = Observation
     template_name = 'observations/observation_verify.html'
     form_class = VerificationForm
@@ -178,7 +206,7 @@ def is_superuser(user):
 @user_passes_test(is_superuser)
 
 def delete_observation(request, pk):
-    obs = get_object_or_404(Observation, pk=pk)
+    obs = get_object_or_404(Observation, pk=pk, organization=request.organization)
 
     if request.method == 'POST':
         obs.delete()
@@ -191,7 +219,7 @@ def delete_observation(request, pk):
 @login_required
 def archived_observations_list(request):
     """List all archived (closed) observations"""
-    archived = Observation.objects.filter(is_archived=True).order_by('-id')
+    archived = Observation.objects.filter(is_archived=True, organization=request.organization).order_by('-id')
 
     # Handle pagination
     paginator = Paginator(archived, 10)  # Show 10 observations per page
@@ -212,7 +240,7 @@ def is_safety_manager(user):
 @login_required
 @user_passes_test(is_safety_manager)
 def archive_observation(request, pk):
-    obs = get_object_or_404(Observation, pk=pk)
+    obs = get_object_or_404(Observation, pk=pk, organization=request.organization)
     obs.is_archived = True
     obs.save()
     return redirect("observations:observation_list")
@@ -220,7 +248,7 @@ def archive_observation(request, pk):
 
 
 def restore_observation(request, pk):
-    obs = get_object_or_404(Observation, pk=pk)
+    obs = get_object_or_404(Observation, pk=pk, organization=request.organization)
     obs.is_archived = False
     obs.save()
     return redirect("observations:archived_list")
@@ -245,7 +273,7 @@ def export_observations_excel(request):
     ]
     ws.append(headers)
 
-    for obs in Observation.objects.all().select_related("observer"):
+    for obs in Observation.objects.all(organization=request.organization).select_related("observer"):
         ws.append([
             obs.id,
             obs.title,
@@ -286,7 +314,7 @@ def export_observations_csv(request):
         "Created At",
     ])
 
-    for obs in Observation.objects.all().select_related("observer"):
+    for obs in Observation.objects.all(organization=request.organization).select_related("observer"):
         writer.writerow([
             obs.id,
             obs.title,
@@ -321,6 +349,7 @@ def ajax_add_location(request):
 # import pandas as pd
 import plotly.express as px
 from plotly.io import to_image
+import plotly.io as pio  
 from django.http import HttpResponse
 from django.db.models import Count, Q
 from django.shortcuts import render
@@ -336,7 +365,7 @@ def observations_dashboard(request):
     # -------------------------------
     # 1. Base queryset (ACTIVE ONLY)
     # -------------------------------
-    qs = Observation.objects.filter(is_archived=False)
+    qs = Observation.objects.filter(is_archived=False, organization=request.organization)
 
     today = date.today()
 
@@ -430,7 +459,106 @@ def observations_dashboard(request):
 
     status_fig.update_layout(modebar_add=["toImage"])
     status_plot = status_fig.to_html(full_html=False)
+    #-------------------------------
+    # 7. Observer Performance
+    #-------------------------------
+    observer_qs = (
+        Observation.objects
+        .filter(organization=request.organization)
+        .values(Observer=F("observer__email"))
+        .annotate(total=Count("id"))
+        .filter(observer__isnull=False)
+        .order_by("-total")
+        )
+    observer_df = pd.DataFrame(list(observer_qs))
+    # print(observer_df)
+    if not observer_df.empty:
+        observer_fig = px.bar(
+            observer_df,
+            x="Observer",
+            y="total",
+            title="Observers – Observations Reported",
+            labels={"Observer": "Observer", "total": "Observations"},
+            color="total",
+            )
+        observer_plot = observer_fig.to_html(full_html=False)
+    else:
+        observer_fig = px.bar(
+            pd.DataFrame(columns=["Observer", "total"]),
+            x="Observer",
+            y="total",
+            title="Observers – Observations Reported",
+            labels={"Observer": "Observer", "total": "Observations"},
+            color=[],
+            )
+        # observer_plot = "<p>No data available</p>"
 
+    #---------------------------------
+    # 8. Action Owner Performance
+    #---------------------------------
+    owner_qs = (
+        Observation.objects
+        .filter(organization=request.organization)
+        .values(owner=F("assigned_to__email"))
+        .annotate(total=Count("id"))
+        .filter(assigned_to__isnull=False)
+        .order_by("-total")
+    )
+    owner_df = pd.DataFrame(list(owner_qs))
+    if not owner_df.empty:
+        owner_fig = px.bar(
+            owner_df,
+            x="owner",
+            y="total",
+            title="Action Owners – Tasks Assigned",
+            labels={"owner": "Action Owner", "total": "Assigned Tasks"},
+            color="total",
+        )
+        owner_plot = owner_fig.to_html(full_html=False)
+    else:
+        owner_fig = px.bar(
+            pd.DataFrame(columns=["owner", "total"]),
+            x="owner",
+            y="total",
+            title="Action Owners – Tasks Assigned",
+        labels={"owner": "Action Owner", "total": "Assigned Tasks"},
+        color="total",
+    )
+        # owner_plot = "<p>No data available</p>"
+
+    #--------------------------------
+    # 9. Safety Manager Performance
+    #--------------------------------
+    manager_qs = (
+        Observation.objects
+        .filter(organization=request.organization)
+        .filter(status="CLOSED")
+        .values(safety_manager=F("assigned_to__email"))
+        .annotate(total=Count("id"))
+        .order_by("-total")
+    )
+    safety_manager_df = pd.DataFrame(list(manager_qs))
+    if not safety_manager_df.empty:
+        manager_fig = px.bar(
+            safety_manager_df,
+            x="safety_manager",
+            y="total",
+            title="Safety Managers – Observations Closed",
+            labels={"safety_manager": "Manager", "total": "Closed Observations"},
+            color="total",
+        )
+        # manager_plot = manager_fig.to_html(full_html=False)
+    else:
+        manager_fig = px.bar(
+            pd.DataFrame(columns=["safety_manager", "total"]),
+            x="safety_manager",
+            y="total",
+            title="Safety Managers – Observations Closed",
+            labels={"safety_manager": "Manager", "total": "Closed Observations"},
+            color="total",
+    )
+        
+        # manager_plot = "<p>No data available</p>"
 
     # -------------------------------
     # 6. Final context
@@ -444,6 +572,9 @@ def observations_dashboard(request):
         "trend": trend,
         "severity_plot": severity_plot,
         "status_plot": status_plot,
+        "observer_plot": pio.to_html(observer_fig, full_html=False),
+        "owner_plot": pio.to_html(owner_fig, full_html=False),
+        "manager_plot": pio.to_html(manager_fig, full_html=False),
     }
 
     return render(request, "observations/dashboard.html", context)

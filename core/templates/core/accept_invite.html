@@ -1,0 +1,38 @@
+
+<div class="container mt-5" style="max-width: 600px;">
+  <div class="card shadow-sm">
+    <div class="card-body">
+
+      <h4 class="mb-3">Accept Invitation</h4>
+
+      <p>
+        You are joining the
+        <strong>{{ invite.organization.name }}</strong>
+        as a
+        <strong>{{ invite.role|title }}</strong>.
+      </p>
+
+      <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <!-- <div class="mb-3">
+          <label class="form-label">Set Password</label>
+          <input type="password" name="password1" class="form-control" required>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Confirm Password</label>
+          <input type="password" name="password2" class="form-control" required>
+        </div> -->
+
+        <button type="submit" class="btn btn-success w-100">
+          Join Organization
+        </button>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+
+

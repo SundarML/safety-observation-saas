@@ -19,14 +19,37 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
+from observations import views as obs_views
+from core.views import home_view
+from django.http import HttpResponse
+from core.views import organization_signup
+
+def signup_placeholder(request):
+    
+    return HttpResponse("Org Signup functionality coming soon!")
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # Authentication URLs
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     # path('accounts/logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('accounts/', include('django.contrib.auth.urls')),  # login/logout/password reset etc.
+    # User management URLs
     path('users/', include('users.urls')),  # user-facing endpoints (profile / simple)
-    path('', include('observations.urls', namespace='observations')),
+    # Home 
+    path('', home_view, name='home'),  # Home page
+
+    # path('', obs_views.home_view, name='home'),  # Home page
+    
+    # Saast core URLs(signup, demo request, invite)
+    path('signup/', organization_signup, name='signup'),  # Signup page
+    path('', include('core.urls')),  # Core app URLs
+    
+    # Observations app URLs
+    path('observations/', include('observations.urls', namespace='observations')),
+    
+
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

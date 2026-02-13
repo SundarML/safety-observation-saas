@@ -29,6 +29,10 @@ class Observation(models.Model):
         ('CLOSED','Closed'),
     ]
 
+    organization = models.ForeignKey('core.Organization',
+                                        on_delete=models.CASCADE,
+                                        related_name='observations')
+
     location = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='observations')
     observer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='observed')
     date_observed = models.DateTimeField(default=timezone.now)
